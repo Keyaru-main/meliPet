@@ -1,0 +1,104 @@
+name: Fetch Content
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to fetch'
+        required: true
+        type: string
+      branch_name:
+        description: 'Temporary branch name'
+        required: true
+        type: string
+      file_type:
+        description: 'Type: web or file'
+        required: false
+        default: 'web'
+        type: string
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch content
+        run: |
+          mkdir -p fetched
+          
+          URL="${{ inputs.url }}"
+          echo "Fetching: $URL"
+          
+          # دانلود با curl
+          if curl -L -f -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+               --max-time 60 --max-filesize 104857600 \
+               -o fetched/content "$URL" 2>fetched/curl_error.txt; then
+            
+            CONTENT_TYPE=$(file -b --mime-type fetched/content)
+            
+            case "$CONTENT_TYPE" in
+              text/html*)
+                mv fetched/content fetched/content.html
+                EXT="html"
+                ;;
+              application/json*)
+                mv fetched/content fetched/content.json
+                EXT="json"
+                ;;
+              application/pdf*)
+                mv fetched/content fetched/content.pdf
+                EXT="pdf"
+                ;;
+              image/*)
+                EXT="${URL##*.}"
+                EXT="${EXT%%\?*}"
+                mv fetched/content "fetched/content.${EXT}"
+                ;;
+              *)
+                EXT="${URL##*.}"
+                EXT="${EXT%%\?*}"
+                [ -z "$EXT" ] && EXT="bin"
+                mv fetched/content "fetched/content.${EXT}"
+                ;;
+            esac
+            
+            cat > fetched/metadata.txt << EOF
+          URL: $URL
+          Fetched: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          Content-Type: $CONTENT_TYPE
+          Size: $(stat -f%z fetched/content.* 2>/dev/null || stat -c%s fetched/content.*)
+          Status: Success
+          EOF
+            
+            echo "✓ Downloaded successfully"
+            ls -lh fetched/
+            
+          else
+            # خطا
+            echo "✗ Download failed"
+            cat > fetched/error.txt << EOF
+          Error fetching: $URL
+          $(cat fetched/curl_error.txt)
+          EOF
+            cat fetched/error.txt
+            exit 1
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b ${{ inputs.branch_name }}
+          git add fetched/
+          git commit -m "Fetched: ${{ inputs.url }}"
+          git push origin ${{ inputs.branch_name }}
+          
+          echo "✓ Pushed to branch: ${{ inputs.branch_name }}"
