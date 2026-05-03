@@ -14,11 +14,16 @@ on:
         required: false
         default: 'web'
 
+permissions:
+  contents: write
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch content
         run: |
@@ -74,14 +79,8 @@ jobs:
             mv fetched/content.tmp "fetched/$FILENAME"
 
             # ذخیره metadata
-            cat > fetched/metadata.txt << EOL
-URL: $URL
-Final URL: $FINAL_URL
-Status: $HTTP_CODE
-Content-Type: $CONTENT_TYPE
-Size: $SIZE bytes
-Filename: $FILENAME
-EOL
+            printf "URL: %s\nFinal URL: %s\nStatus: %s\nContent-Type: %s\nSize: %s bytes\nFilename: %s\n" \
+              "$URL" "$FINAL_URL" "$HTTP_CODE" "$CONTENT_TYPE" "$SIZE" "$FILENAME" > fetched/metadata.txt
 
             # ذخیره نام فایل
             echo "$FILENAME" > fetched/filename.txt
@@ -102,5 +101,5 @@ EOL
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b ${{ github.event.inputs.branch_name }}
           git add fetched/
-          git commit -m "Fetch: ${{ github.event.inputs.url }}"
+          git commit -m "Fetch: ${{ github.event.inputs.url }}" || echo "No changes to commit"
           git push origin ${{ github.event.inputs.branch_name }}
