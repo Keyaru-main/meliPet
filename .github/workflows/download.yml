@@ -45,7 +45,7 @@ jobs:
             });
 
             console.log('Opening CurseForge download page...');
-            await page.goto('https://www.curseforge.com/minecraft/mc-mods/bubblesex/download/7821189', {
+            await page.goto('https://www.curseforge.com/minecraft/mc-mods/mixin-booter/download/7049694', {
               waitUntil: 'networkidle2',
               timeout: 60000
             });
