@@ -1,0 +1,110 @@
+name: Download BaublesEX from CurseForge
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Puppeteer
+        run: |
+          npm init -y
+          npm install puppeteer
+
+      - name: Download file using headless browser
+        run: |
+          cat > download.js << 'EOF'
+          const puppeteer = require('puppeteer');
+          const path = require('path');
+          const fs = require('fs');
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            const page = await browser.newPage();
+            
+            // تنظیم مسیر دانلود
+            const downloadPath = path.resolve('./downloads');
+            if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
+            
+            await page._client().send('Page.setDownloadBehavior', {
+              behavior: 'allow',
+              downloadPath: downloadPath
+            });
+
+            console.log('Opening CurseForge download page...');
+            await page.goto('https://www.curseforge.com/minecraft/mc-mods/bubblesex/download/7821189', {
+              waitUntil: 'networkidle2',
+              timeout: 60000
+            });
+
+            console.log('Waiting for download to start...');
+            
+            // صبر می‌کنیم تا فایل دانلود شود (حداکثر ۲ دقیقه)
+            let downloaded = false;
+            const startTime = Date.now();
+            
+            while (!downloaded && (Date.now() - startTime) < 120000) {
+              const files = fs.readdirSync(downloadPath);
+              const jarFiles = files.filter(f => f.endsWith('.jar'));
+              
+              if (jarFiles.length > 0) {
+                downloaded = true;
+                console.log(`File downloaded: ${jarFiles[0]}`);
+              } else {
+                console.log('Still waiting for download...');
+                await new Promise(r => setTimeout(r, 2000));
+              }
+            }
+
+            if (!downloaded) {
+              console.log('Download timeout. Trying alternative method...');
+              
+              // روش جایگزین: کلیک روی دکمه دانلود
+              const downloadButton = await page.$('a[href*="download"]');
+              if (downloadButton) {
+                console.log('Found download button, clicking...');
+                await downloadButton.click();
+                await new Promise(r => setTimeout(r, 10000));
+              }
+            }
+
+            await browser.close();
+            
+            // نمایش فایل‌های دانلود شده
+            const finalFiles = fs.readdirSync(downloadPath);
+            console.log('Files in download folder:', finalFiles);
+          })();
+          EOF
+          
+          node download.js
+
+      - name: List downloaded files
+        run: |
+          echo "Downloaded files:"
+          ls -la downloads/ || echo "No downloads directory"
+          echo "Current directory:"
+          ls -la
+
+      - name: Commit and Push downloaded JAR
+        run: |
+          mkdir -p builds
+          cp downloads/*.jar builds/ 2>/dev/null || echo "No JAR files found"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add builds/*.jar 2>/dev/null || echo "No files to add"
+          git commit -m "Download BaublesEX from CurseForge" || echo "No changes to commit"
+          git push origin HEAD:builds --force
