@@ -45,7 +45,7 @@ jobs:
             });
 
             console.log('Opening CurseForge download page...');
-            await page.goto('https://www.curseforge.com/minecraft/mc-mods/mixin-booter/download/7049694', {
+            await page.goto('https://www.curseforge.com/minecraft/mc-mods/mouse-tweaks-unofficial/download/5876158', {
               waitUntil: 'networkidle2',
               timeout: 60000
             });
