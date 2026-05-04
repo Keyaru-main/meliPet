@@ -138,18 +138,16 @@ jobs:
             # تغییر نام فایل موقت
             mv fetched/content.tmp "fetched/$FILENAME"
 
-            # ذخیره metadata
-            cat > fetched/metadata.txt << EOF
-URL: $URL
-Final URL: $FINAL_URL
-HTTP Status: $HTTP_CODE
-Content-Type: $CONTENT_TYPE
-Size: $SIZE bytes ($SIZE_HUMAN)
-Download Time: ${TIME_TOTAL}s
-Speed: ${SPEED_MB} MB/s (${SPEED_KB} KB/s)
-Filename: $FILENAME
-Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-EOF
+            # ذخیره metadata با استفاده از echo
+            echo "URL: $URL" > fetched/metadata.txt
+            echo "Final URL: $FINAL_URL" >> fetched/metadata.txt
+            echo "HTTP Status: $HTTP_CODE" >> fetched/metadata.txt
+            echo "Content-Type: $CONTENT_TYPE" >> fetched/metadata.txt
+            echo "Size: $SIZE bytes ($SIZE_HUMAN)" >> fetched/metadata.txt
+            echo "Download Time: ${TIME_TOTAL}s" >> fetched/metadata.txt
+            echo "Speed: ${SPEED_MB} MB/s (${SPEED_KB} KB/s)" >> fetched/metadata.txt
+            echo "Filename: $FILENAME" >> fetched/metadata.txt
+            echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> fetched/metadata.txt
 
             # ذخیره نام فایل
             echo "$FILENAME" > fetched/filename.txt
