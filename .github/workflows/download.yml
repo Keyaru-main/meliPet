@@ -1,0 +1,356 @@
+name: Download 
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to download (supports complex pages)'
+        required: true
+      branch_name:
+        description: 'Temporary branch name'
+        required: true
+      output_filename:
+        description: 'Custom output filename (optional)'
+        required: false
+        default: ''
+      wait_selector:
+        description: 'CSS selector to wait for (optional)'
+        required: false
+        default: ''
+      click_selector:
+        description: 'CSS selector to click for download (optional)'
+        required: false
+        default: ''
+      wait_time:
+        description: 'Wait time in seconds (default: 30)'
+        required: false
+        default: '30'
+      user_agent:
+        description: 'Custom User-Agent (optional)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Puppeteer
+        run: |
+          npm init -y
+          npm install puppeteer@latest
+
+      - name: Download file using headless browser
+        id: download
+        run: |
+          cat > download.js << 'EOF'
+          const puppeteer = require('puppeteer');
+          const path = require('path');
+          const fs = require('fs');
+
+          (async () => {
+            const url = process.env.TARGET_URL;
+            const customFilename = process.env.CUSTOM_FILENAME;
+            const waitSelector = process.env.WAIT_SELECTOR;
+            const clickSelector = process.env.CLICK_SELECTOR;
+            const waitTime = parseInt(process.env.WAIT_TIME || '30') * 1000;
+            const customUA = process.env.USER_AGENT;
+            
+            console.log('='.repeat(60));
+            console.log('🚀 MeliPet Advanced Downloader');
+            console.log('='.repeat(60));
+            console.log(`📍 Target URL: ${url}`);
+            console.log(`⏱️  Wait time: ${waitTime/1000}s`);
+            if (customFilename) console.log(`📝 Custom filename: ${customFilename}`);
+            if (waitSelector) console.log(`🎯 Wait selector: ${waitSelector}`);
+            if (clickSelector) console.log(`🖱️  Click selector: ${clickSelector}`);
+            console.log('='.repeat(60));
+            
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--window-size=1920,1080'
+              ]
+            });
+          
+            const page = await browser.newPage();
+            
+            // تنظیم User-Agent
+            if (customUA) {
+              await page.setUserAgent(customUA);
+            } else {
+              await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            }
+            
+            // تنظیم viewport
+            await page.setViewport({ width: 1920, height: 1080 });
+          
+            const downloadPath = path.resolve('./downloads');
+            if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
+          
+            // تنظیم رفتار دانلود
+            await page._client().send('Page.setDownloadBehavior', {
+              behavior: 'allow',
+              downloadPath: downloadPath
+            });
+            
+            // رهگیری درخواست‌های شبکه
+            const downloadedFiles = [];
+            page.on('response', async (response) => {
+              const url = response.url();
+              const contentType = response.headers()['content-type'] || '';
+              const contentDisposition = response.headers()['content-disposition'] || '';
+              
+              // شناسایی فایل‌های قابل دانلود
+              if (contentDisposition.includes('attachment') || 
+                  contentType.includes('application/') ||
+                  contentType.includes('octet-stream')) {
+                console.log(`📦 Detected download: ${url}`);
+                console.log(`   Content-Type: ${contentType}`);
+                console.log(`   Content-Disposition: ${contentDisposition}`);
+              }
+            });
+
+            console.log('\n🌐 Opening page...');
+            await page.goto(url, {
+              waitUntil: 'networkidle2',
+              timeout: 90000
+            });
+            console.log('✓ Page loaded');
+            
+            // اسکرین‌شات اولیه
+            await page.screenshot({ path: './downloads/page_initial.png', fullPage: false });
+            console.log('✓ Initial screenshot saved');
+            
+            // انتظار برای selector مشخص
+            if (waitSelector) {
+              console.log(`\n⏳ Waiting for selector: ${waitSelector}`);
+              try {
+                await page.waitForSelector(waitSelector, { timeout: 30000 });
+                console.log('✓ Selector found');
+              } catch (e) {
+                console.log('⚠️  Selector not found, continuing anyway...');
+              }
+            }
+            
+            // کلیک روی دکمه دانلود
+            if (clickSelector) {
+              console.log(`\n🖱️  Clicking selector: ${clickSelector}`);
+              try {
+                await page.waitForSelector(clickSelector, { timeout: 10000 });
+                await page.click(clickSelector);
+                console.log('✓ Clicked successfully');
+                await page.screenshot({ path: './downloads/page_after_click.png', fullPage: false });
+              } catch (e) {
+                console.log('⚠️  Could not click selector:', e.message);
+              }
+            }
+
+            console.log(`\n⏳ Waiting for download (max ${waitTime/1000}s)...`);
+          
+            let downloaded = false;
+            const startTime = Date.now();
+            let lastFileCount = 0;
+          
+            while (!downloaded && (Date.now() - startTime) < waitTime) {
+              const files = fs.readdirSync(downloadPath);
+              const downloadFiles = files.filter(f => 
+                !f.endsWith('.png') && 
+                !f.endsWith('.crdownload') && 
+                !f.endsWith('.tmp') &&
+                f !== 'metadata.json'
+              );
+          
+              if (downloadFiles.length > lastFileCount) {
+                lastFileCount = downloadFiles.length;
+                console.log(`📥 Found ${downloadFiles.length} file(s): ${downloadFiles.join(', ')}`);
+              }
+              
+              if (downloadFiles.length > 0) {
+                // بررسی اینکه دانلود کامل شده
+                const inProgressFiles = files.filter(f => f.endsWith('.crdownload') || f.endsWith('.tmp'));
+                if (inProgressFiles.length === 0) {
+                  downloaded = true;
+                  console.log(`✓ Download completed: ${downloadFiles.join(', ')}`);
+                  break;
+                }
+              }
+              
+              const elapsed = Math.round((Date.now() - startTime) / 1000);
+              if (elapsed % 5 === 0 && elapsed > 0) {
+                console.log(`   Still waiting... (${elapsed}s elapsed)`);
+              }
+              
+              await new Promise(r => setTimeout(r, 1000));
+            }
+
+            if (!downloaded) {
+              console.log('\n⚠️  No automatic download detected');
+              console.log('📸 Taking final screenshot...');
+              await page.screenshot({ path: './downloads/page_final.png', fullPage: true });
+              
+              // تلاش برای یافتن لینک‌های دانلود
+              console.log('\n🔍 Searching for download links...');
+              const links = await page.evaluate(() => {
+                const anchors = Array.from(document.querySelectorAll('a[href]'));
+                return anchors
+                  .filter(a => {
+                    const href = a.href.toLowerCase();
+                    const text = a.textContent.toLowerCase();
+                    return href.includes('download') || 
+                           text.includes('download') ||
+                           href.match(/\.(jar|zip|exe|apk|pdf|tar|gz|7z|rar)$/);
+                  })
+                  .map(a => ({ href: a.href, text: a.textContent.trim() }))
+                  .slice(0, 10);
+              });
+              
+              if (links.length > 0) {
+                console.log('Found potential download links:');
+                links.forEach((link, i) => {
+                  console.log(`  ${i+1}. ${link.text}`);
+                  console.log(`     ${link.href}`);
+                });
+                downloaded = true;
+                
+                // ذخیره لینک‌ها
+                fs.writeFileSync('./downloads/found_links.json', JSON.stringify(links, null, 2));
+              }
+            }
+            
+            // ذخیره HTML صفحه
+            const html = await page.content();
+            fs.writeFileSync('./downloads/page.html', html);
+            console.log('✓ Page HTML saved');
+
+            await browser.close();
+          
+            // نمایش فایل‌های دانلود شده
+            const finalFiles = fs.readdirSync(downloadPath);
+            console.log('\n' + '='.repeat(60));
+            console.log('📁 Files in download folder:');
+            finalFiles.forEach(f => {
+              const stats = fs.statSync(path.join(downloadPath, f));
+              const sizeMB = (stats.size / 1048576).toFixed(2);
+              console.log(`   ${f} (${sizeMB} MB)`);
+            });
+            console.log('='.repeat(60));
+            
+            // ذخیره metadata
+            const metadata = {
+              url: url,
+              timestamp: new Date().toISOString(),
+              files: finalFiles.map(f => {
+                const stats = fs.statSync(path.join(downloadPath, f));
+                return {
+                  name: f,
+                  size: stats.size,
+                  sizeMB: (stats.size / 1048576).toFixed(2)
+                };
+              }),
+              customFilename: customFilename || null,
+              waitSelector: waitSelector || null,
+              clickSelector: clickSelector || null
+            };
+            fs.writeFileSync('./downloads/metadata.json', JSON.stringify(metadata, null, 2));
+            
+            process.exit(downloaded ? 0 : 1);
+          })();
+          EOF
+          
+          export TARGET_URL="${{ github.event.inputs.url }}"
+          export CUSTOM_FILENAME="${{ github.event.inputs.output_filename }}"
+          export WAIT_SELECTOR="${{ github.event.inputs.wait_selector }}"
+          export CLICK_SELECTOR="${{ github.event.inputs.click_selector }}"
+          export WAIT_TIME="${{ github.event.inputs.wait_time }}"
+          export USER_AGENT="${{ github.event.inputs.user_agent }}"
+          
+          node download.js || echo "Download script finished with warnings"
+
+      - name: List downloaded files
+        run: |
+          echo "📦 Downloaded files:"
+          if [ -d downloads ]; then
+            ls -lh downloads/
+            echo ""
+            echo "Total size:"
+            du -sh downloads/
+          else
+            echo "No downloads directory"
+          fi
+
+      - name: Organize files
+        run: |
+          mkdir -p fetched
+          
+          # کپی فایل‌های دانلود شده (به جز اسکرین‌شات‌ها و متادیتا)
+          if [ -d downloads ]; then
+            for file in downloads/*; do
+              filename=$(basename "$file")
+              # فقط فایل‌های اصلی را کپی کن
+              if [[ ! "$filename" =~ \.(png|html|json)$ ]]; then
+                # اگر نام سفارشی داده شده، تغییر نام بده
+                if [ -n "${{ github.event.inputs.output_filename }}" ]; then
+                  cp "$file" "fetched/${{ github.event.inputs.output_filename }}"
+                  echo "${{ github.event.inputs.output_filename }}" > fetched/filename.txt
+                else
+                  cp "$file" "fetched/$filename"
+                  echo "$filename" > fetched/filename.txt
+                fi
+              fi
+            done
+            
+            # کپی metadata
+            if [ -f downloads/metadata.json ]; then
+              cp downloads/metadata.json fetched/metadata.json
+            fi
+            
+            # کپی اسکرین‌شات‌ها برای دیباگ
+            if [ -f downloads/page_initial.png ]; then
+              cp downloads/page_initial.png fetched/
+            fi
+            if [ -f downloads/page_final.png ]; then
+              cp downloads/page_final.png fetched/
+            fi
+            
+            # ایجاد metadata.txt
+            if [ -f fetched/filename.txt ]; then
+              FILENAME=$(cat fetched/filename.txt)
+              SIZE=$(stat -f%z "fetched/$FILENAME" 2>/dev/null || stat -c%s "fetched/$FILENAME" 2>/dev/null || echo "unknown")
+              cat > fetched/metadata.txt << EOFMETA
+URL: ${{ github.event.inputs.url }}
+Method: Puppeteer (Headless Browser)
+Filename: $FILENAME
+Size: $SIZE bytes
+Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+Custom Filename: ${{ github.event.inputs.output_filename }}
+Wait Selector: ${{ github.event.inputs.wait_selector }}
+Click Selector: ${{ github.event.inputs.click_selector }}
+EOFMETA
+            fi
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ${{ github.event.inputs.branch_name }}
+          git add fetched/
+          git commit -m "Download: ${{ github.event.inputs.url }}" || echo "No changes to commit"
+          git push origin ${{ github.event.inputs.branch_name }}

@@ -1,0 +1,177 @@
+name: Fetch Content
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to fetch'
+        required: true
+      branch_name:
+        description: 'Temporary branch name'
+        required: true
+      file_type:
+        description: 'Type: web or file'
+        required: false
+        default: 'web'
+      output_filename:
+        description: 'Custom output filename (optional)'
+        required: false
+        default: ''
+      max_size:
+        description: 'Max download size in MB (default: 100)'
+        required: false
+        default: '100'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch content
+        id: fetch
+        run: |
+          set -e
+          mkdir -p fetched
+
+          URL="${{ github.event.inputs.url }}"
+          CUSTOM_NAME="${{ github.event.inputs.output_filename }}"
+          MAX_SIZE_MB="${{ github.event.inputs.max_size }}"
+          MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
+          
+          echo "Fetching: $URL"
+          echo "Max size: ${MAX_SIZE_MB}MB"
+          
+          # تنظیمات curl پیشرفته
+          CURL_OPTS=(
+            -L                          # Follow redirects
+            --max-time 600              # 10 minute timeout
+            --connect-timeout 30        # Connection timeout
+            --retry 3                   # Retry 3 times
+            --retry-delay 2             # Wait 2s between retries
+            --retry-max-time 120        # Max retry time
+            --max-filesize "$MAX_SIZE_BYTES"
+            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            --compressed                # Accept compressed responses
+            -w "\n%{http_code}\n%{content_type}\n%{size_download}\n%{url_effective}\n%{time_total}\n%{speed_download}"
+            -o fetched/content.tmp
+          )
+
+          # دانلود با curl
+          if curl "${CURL_OPTS[@]}" "$URL" > fetched/curl_info.txt 2>&1; then
+
+            # خواندن اطلاعات curl
+            HTTP_CODE=$(sed -n '2p' fetched/curl_info.txt)
+            CONTENT_TYPE=$(sed -n '3p' fetched/curl_info.txt)
+            SIZE=$(sed -n '4p' fetched/curl_info.txt)
+            FINAL_URL=$(sed -n '5p' fetched/curl_info.txt)
+            TIME_TOTAL=$(sed -n '6p' fetched/curl_info.txt)
+            SPEED=$(sed -n '7p' fetched/curl_info.txt)
+            
+            # محاسبه سرعت به صورت خوانا
+            SPEED_KB=$(echo "scale=2; $SPEED / 1024" | bc)
+            SPEED_MB=$(echo "scale=2; $SPEED / 1048576" | bc)
+
+            # تعیین نام فایل
+            if [ -n "$CUSTOM_NAME" ]; then
+              FILENAME="$CUSTOM_NAME"
+            else
+              # استخراج نام فایل از URL
+              FILENAME=$(basename "$FINAL_URL" | sed 's/[?#].*//')
+
+              # اگر نام فایل خالی بود
+              if [ -z "$FILENAME" ] || [ "$FILENAME" = "/" ]; then
+                FILENAME=$(basename "$URL" | sed 's/[?#].*//')
+              fi
+
+              # تعیین extension بر اساس Content-Type
+              if [ -z "$FILENAME" ] || [[ ! "$FILENAME" =~ \. ]]; then
+                case "$CONTENT_TYPE" in
+                  *text/html*) EXT=".html" ;;
+                  *application/json*) EXT=".json" ;;
+                  *text/plain*) EXT=".txt" ;;
+                  *application/pdf*) EXT=".pdf" ;;
+                  *image/jpeg*|*image/jpg*) EXT=".jpg" ;;
+                  *image/png*) EXT=".png" ;;
+                  *image/gif*) EXT=".gif" ;;
+                  *image/webp*) EXT=".webp" ;;
+                  *application/zip*) EXT=".zip" ;;
+                  *application/x-gzip*|*application/gzip*) EXT=".gz" ;;
+                  *application/x-tar*) EXT=".tar" ;;
+                  *application/x-7z-compressed*) EXT=".7z" ;;
+                  *application/x-rar*) EXT=".rar" ;;
+                  *application/java-archive*) EXT=".jar" ;;
+                  *application/vnd.android.package-archive*) EXT=".apk" ;;
+                  *application/x-msdownload*|*application/x-msdos-program*) EXT=".exe" ;;
+                  *application/octet-stream*) EXT=".bin" ;;
+                  *video/mp4*) EXT=".mp4" ;;
+                  *video/x-matroska*) EXT=".mkv" ;;
+                  *audio/mpeg*) EXT=".mp3" ;;
+                  *application/xml*|*text/xml*) EXT=".xml" ;;
+                  *text/csv*) EXT=".csv" ;;
+                  *) EXT=".bin" ;;
+                esac
+
+                if [ -z "$FILENAME" ]; then
+                  FILENAME="content${EXT}"
+                else
+                  FILENAME="${FILENAME}${EXT}"
+                fi
+              fi
+            fi
+            
+            # تبدیل سایز به فرمت خوانا
+            if [ "$SIZE" -lt 1024 ]; then
+              SIZE_HUMAN="${SIZE} B"
+            elif [ "$SIZE" -lt 1048576 ]; then
+              SIZE_HUMAN="$(echo "scale=2; $SIZE / 1024" | bc) KB"
+            else
+              SIZE_HUMAN="$(echo "scale=2; $SIZE / 1048576" | bc) MB"
+            fi
+
+            # تغییر نام فایل موقت
+            mv fetched/content.tmp "fetched/$FILENAME"
+
+            # ذخیره metadata
+            cat > fetched/metadata.txt << EOF
+URL: $URL
+Final URL: $FINAL_URL
+HTTP Status: $HTTP_CODE
+Content-Type: $CONTENT_TYPE
+Size: $SIZE bytes ($SIZE_HUMAN)
+Download Time: ${TIME_TOTAL}s
+Speed: ${SPEED_MB} MB/s (${SPEED_KB} KB/s)
+Filename: $FILENAME
+Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+EOF
+
+            # ذخیره نام فایل
+            echo "$FILENAME" > fetched/filename.txt
+
+            echo "✓ Download successful"
+            echo "  Filename: $FILENAME"
+            echo "  Size: $SIZE_HUMAN"
+            echo "  Speed: ${SPEED_MB} MB/s"
+            echo "  Time: ${TIME_TOTAL}s"
+
+          else
+            echo "✗ Failed to fetch URL"
+            echo "Error fetching $URL" > fetched/error.txt
+            cat fetched/curl_info.txt >> fetched/error.txt
+            exit 1
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ${{ github.event.inputs.branch_name }}
+          git add fetched/
+          git commit -m "Fetch: ${{ github.event.inputs.url }}" || echo "No changes to commit"
+          git push origin ${{ github.event.inputs.branch_name }}
