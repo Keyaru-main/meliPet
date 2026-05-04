@@ -329,20 +329,18 @@ jobs:
               cp downloads/page_final.png fetched/
             fi
             
-            # ایجاد metadata.txt
+            # ایجاد metadata.txt با استفاده از echo
             if [ -f fetched/filename.txt ]; then
               FILENAME=$(cat fetched/filename.txt)
-              SIZE=$(stat -f%z "fetched/$FILENAME" 2>/dev/null || stat -c%s "fetched/$FILENAME" 2>/dev/null || echo "unknown")
-              cat > fetched/metadata.txt << EOFMETA
-URL: ${{ github.event.inputs.url }}
-Method: Puppeteer (Headless Browser)
-Filename: $FILENAME
-Size: $SIZE bytes
-Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-Custom Filename: ${{ github.event.inputs.output_filename }}
-Wait Selector: ${{ github.event.inputs.wait_selector }}
-Click Selector: ${{ github.event.inputs.click_selector }}
-EOFMETA
+              SIZE=$(stat -c%s "fetched/$FILENAME" 2>/dev/null || echo "unknown")
+              echo "URL: ${{ github.event.inputs.url }}" > fetched/metadata.txt
+              echo "Method: Puppeteer (Headless Browser)" >> fetched/metadata.txt
+              echo "Filename: $FILENAME" >> fetched/metadata.txt
+              echo "Size: $SIZE bytes" >> fetched/metadata.txt
+              echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> fetched/metadata.txt
+              echo "Custom Filename: ${{ github.event.inputs.output_filename }}" >> fetched/metadata.txt
+              echo "Wait Selector: ${{ github.event.inputs.wait_selector }}" >> fetched/metadata.txt
+              echo "Click Selector: ${{ github.event.inputs.click_selector }}" >> fetched/metadata.txt
             fi
           fi
 
