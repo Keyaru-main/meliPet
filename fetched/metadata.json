@@ -1,0 +1,29 @@
+{
+  "url": "https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map/donwload/4424616",
+  "timestamp": "2026-05-08T11:14:04.816Z",
+  "files": [
+    {
+      "name": "found_links.json",
+      "size": 99,
+      "sizeMB": "0.00"
+    },
+    {
+      "name": "page.html",
+      "size": 389582,
+      "sizeMB": "0.37"
+    },
+    {
+      "name": "page_final.png",
+      "size": 3321559,
+      "sizeMB": "3.17"
+    },
+    {
+      "name": "page_initial.png",
+      "size": 1053834,
+      "sizeMB": "1.01"
+    }
+  ],
+  "customFilename": null,
+  "waitSelector": null,
+  "clickSelector": null
+}
