@@ -1,0 +1,9 @@
+URL: https://www.curseforge.com/minecraft/mc-mods/xaeros-world-map
+Final URL: 200
+HTTP Status:                                  Dload  Upload   Total   Spent    Left  Speed
+Content-Type:   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 64656    0 64656    0     0   399k      0 --:--:-- --:--:-- --:--:--  402k
+Size:  bytes ( MB)
+Download Time: text/html; charset=utf-8s
+Speed: .06 MB/s (63.14 KB/s)
+Filename: map.html
+Timestamp: 2026-05-08 10:57:58 UTC
