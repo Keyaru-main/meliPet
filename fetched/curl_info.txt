@@ -1,0 +1,10 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 28177    0 28177    0     0   150k      0 --:--:-- --:--:-- --:--:--  150k100 54572    0 54572    0     0   282k      0 --:--:-- --:--:-- --:--:--  281k
+
+200
+text/html; charset=utf-8
+54572
+https://www.curseforge.com/minecraft/mc-mods/ice-and-fire-dragons/files/all?page=2&pageSize=&showAlphaFiles=hide
+0.188854
+288963
