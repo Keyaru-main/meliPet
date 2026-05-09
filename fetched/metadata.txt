@@ -1,0 +1,9 @@
+URL: https://github.com/keyaruga33/pasban_db/releases/download/1771870951/data.pasban
+Final URL: 
+HTTP Status:                                  Dload  Upload   Total   Spent    Left  Speed
+Content-Type:   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+Size: 100  234k  100  234k    0     0  1252k      0 --:--:-- --:--:-- --:--:-- 1252k bytes ( MB)
+Download Time: 200s
+Speed:  MB/s ( KB/s)
+Filename: data.pasban
+Timestamp: 2026-05-09 19:08:35 UTC
