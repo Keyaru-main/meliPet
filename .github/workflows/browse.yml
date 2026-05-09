@@ -1,0 +1,276 @@
+name: Browse Page
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to browse'
+        required: true
+      branch_name:
+        description: 'Temporary branch name'
+        required: true
+      mode:
+        description: 'Mode: markdown, html, or full'
+        required: false
+        default: 'full'
+      inline_images:
+        description: 'Inline images (true/false)'
+        required: false
+        default: 'true'
+      inline_videos:
+        description: 'Inline videos (true/false)'
+        required: false
+        default: 'false'
+      cloudflare_passer:
+        description: 'Bypass Cloudflare (true/false)'
+        required: false
+        default: 'false'
+      user_agent:
+        description: 'Custom User-Agent'
+        required: false
+        default: ''
+      timeout:
+        description: 'Timeout in milliseconds'
+        required: false
+        default: '30000'
+      cookies:
+        description: 'Cookies JSON string'
+        required: false
+        default: '{}'
+      custom_headers:
+        description: 'Custom headers JSON string'
+        required: false
+        default: '{}'
+
+permissions:
+  contents: write
+
+jobs:
+  browse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 markdownify cloudscraper lxml
+
+      - name: Browse page
+        id: browse
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import base64
+          import time
+          import os
+          import sys
+          import traceback
+          import urllib.parse
+          from pathlib import PurePosixPath
+          
+          try:
+              import cloudscraper
+          except ImportError:
+              cloudscraper = None
+          
+          try:
+              from bs4 import BeautifulSoup
+          except ImportError:
+              BeautifulSoup = None
+          
+          try:
+              from markdownify import markdownify as md
+          except ImportError:
+              md = None
+
+          # ── Parse inputs ──────────────────────────────────────────
+          url = "${{ github.event.inputs.url }}"
+          mode = "${{ github.event.inputs.mode }}"
+          inline_images = "${{ github.event.inputs.inline_images }}" == "true"
+          inline_videos = "${{ github.event.inputs.inline_videos }}" == "true"
+          cloudflare_passer = "${{ github.event.inputs.cloudflare_passer }}" == "true"
+          user_agent = "${{ github.event.inputs.user_agent }}"
+          timeout = int("${{ github.event.inputs.timeout }}" or 30000) / 1000
+          branch_name = "${{ github.event.inputs.branch_name }}"
+          
+          try:
+              cookies = json.loads('${{ github.event.inputs.cookies }}')
+          except:
+              cookies = {}
+          
+          try:
+              custom_headers = json.loads('${{ github.event.inputs.custom_headers }}')
+          except:
+              custom_headers = {}
+
+          # ── Default User-Agent ────────────────────────────────────
+          DEFAULT_UA = (
+              "Mozilla/5.0 (X11; Linux x86_64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/124.0.0.0 Safari/537.36"
+          )
+
+          headers = {"User-Agent": user_agent if user_agent else DEFAULT_UA}
+          headers.update(custom_headers)
+
+          print(f"🌐 Browsing: {url}")
+          print(f"📋 Mode: {mode}")
+          print(f"🖼️  Inline images: {inline_images}")
+          print(f"🎥 Inline videos: {inline_videos}")
+          print(f"🛡️  Cloudflare bypass: {cloudflare_passer}")
+          print(f"⏱️  Timeout: {timeout}s")
+          print(f"🍪 Cookies: {len(cookies)}")
+          print(f"📝 Custom headers: {len(custom_headers)}")
+
+          # ── Fetch page ────────────────────────────────────────────
+          try:
+              if cloudflare_passer and cloudscraper:
+                  session = cloudscraper.create_scraper(
+                      browser={"browser": "chrome", "platform": "linux", "mobile": False}
+                  )
+              else:
+                  import requests
+                  session = requests.Session()
+              
+              if cookies:
+                  session.cookies.update(cookies)
+              
+              response = session.get(url, headers=headers, timeout=timeout)
+              response.raise_for_status()
+              
+              raw_html = response.text
+              final_url = response.url
+              response_cookies = dict(response.cookies)
+              
+              print(f"✅ Fetched: {len(raw_html)} bytes")
+              print(f"🔗 Final URL: {final_url}")
+              print(f"🍪 Response cookies: {len(response_cookies)}")
+              
+          except Exception as e:
+              print(f"❌ Fetch failed: {e}")
+              sys.exit(1)
+
+          # ── Process content ───────────────────────────────────────
+          if mode == "markdown" and md:
+              content = md(raw_html, heading_style="ATX", strip=["script", "style"])
+              print(f"📝 Converted to Markdown: {len(content)} chars")
+          
+          elif mode == "html":
+              content = raw_html
+              print(f"📄 Raw HTML: {len(content)} chars")
+          
+          elif mode == "full":
+              soup = BeautifulSoup(raw_html, "lxml")
+              
+              # Inline CSS
+              for link in soup.find_all("link", rel="stylesheet"):
+                  href = link.get("href", "")
+                  if href:
+                      abs_href = urllib.parse.urljoin(final_url, href)
+                      try:
+                          css_resp = session.get(abs_href, headers=headers, timeout=10)
+                          if css_resp.ok:
+                              style_tag = soup.new_tag("style")
+                              style_tag.string = css_resp.text
+                              link.replace_with(style_tag)
+                      except:
+                          pass
+              
+              # Inline images
+              if inline_images:
+                  for img in soup.find_all("img"):
+                      src = img.get("src", "")
+                      if src and not src.startswith("data:"):
+                          abs_src = urllib.parse.urljoin(final_url, src)
+                          try:
+                              img_resp = session.get(abs_src, headers=headers, timeout=10)
+                              if img_resp.ok:
+                                  ct = img_resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                                  b64 = base64.b64encode(img_resp.content).decode()
+                                  img["src"] = f"data:{ct};base64,{b64}"
+                          except:
+                              pass
+              
+              # Inline videos
+              if inline_videos:
+                  for source in soup.find_all("source"):
+                      src = source.get("src", "")
+                      if src and not src.startswith("data:"):
+                          abs_src = urllib.parse.urljoin(final_url, src)
+                          try:
+                              vid_resp = session.get(abs_src, headers=headers, timeout=15)
+                              if vid_resp.ok:
+                                  ct = vid_resp.headers.get("Content-Type", "video/mp4").split(";")[0]
+                                  b64 = base64.b64encode(vid_resp.content).decode()
+                                  source["src"] = f"data:{ct};base64,{b64}"
+                          except:
+                              pass
+              
+              content = str(soup)
+              print(f"🌐 Full page processed: {len(content)} chars")
+          
+          else:
+              content = raw_html
+
+          # ── Save output ───────────────────────────────────────────
+          os.makedirs("output", exist_ok=True)
+          
+          # Save content
+          ext_map = {"markdown": "md", "html": "html", "full": "html"}
+          ext = ext_map.get(mode, "html")
+          content_path = f"output/content.{ext}"
+          
+          with open(content_path, "w", encoding="utf-8") as f:
+              f.write(content)
+          
+          # Save metadata
+          metadata = {
+              "url": final_url,
+              "mode": mode,
+              "size": str(len(content)),
+              "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+              "status_code": str(response.status_code),
+              "content_type": response.headers.get("Content-Type", "unknown"),
+          }
+          
+          with open("output/metadata.json", "w") as f:
+              json.dump(metadata, f, indent=2)
+          
+          # Save cookies
+          with open("output/cookies.json", "w") as f:
+              json.dump(response_cookies, f, indent=2)
+          
+          print(f"\n✅ Output saved:")
+          print(f"   📄 Content: {content_path} ({len(content)} chars)")
+          print(f"   📋 Metadata: output/metadata.json")
+          print(f"   🍪 Cookies: output/cookies.json")
+          PYEOF
+
+      - name: Commit and push result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create and switch to temp branch
+          git checkout -b ${{ github.event.inputs.branch_name }}
+          
+          # Add output files
+          git add output/
+          
+          # Commit
+          git commit -m "Browse: ${{ github.event.inputs.url }}" || echo "No changes to commit"
+          
+          # Push
+          git push origin ${{ github.event.inputs.branch_name }}
+          
+          echo "✅ Branch created: ${{ github.event.inputs.branch_name }}"
