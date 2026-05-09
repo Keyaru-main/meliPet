@@ -30,9 +30,9 @@ on:
         required: false
         default: ''
       timeout:
-        description: 'Timeout in milliseconds'
+        description: 'Timeout in seconds'
         required: false
-        default: '30000'
+        default: '30'
       cookies:
         description: 'Cookies JSON string'
         required: false
@@ -51,226 +51,111 @@ jobs:
     timeout-minutes: 10
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4 markdownify cloudscraper lxml
+        run: pip install requests beautifulsoup4 markdownify lxml 2>/dev/null || true
 
       - name: Browse page
-        id: browse
         run: |
-          python3 << 'PYEOF'
-          import json
-          import base64
-          import time
-          import os
-          import sys
-          import traceback
-          import urllib.parse
-          from pathlib import PurePosixPath
-          
-          try:
-              import cloudscraper
-          except ImportError:
-              cloudscraper = None
+          cat > browse.py << 'PYEOF'
+          import json, base64, os, sys, time, urllib.parse
           
           try:
               from bs4 import BeautifulSoup
-          except ImportError:
+          except:
               BeautifulSoup = None
-          
           try:
               from markdownify import markdownify as md
-          except ImportError:
+          except:
               md = None
 
-          # ── Parse inputs ──────────────────────────────────────────
-          url = "${{ github.event.inputs.url }}"
-          mode = "${{ github.event.inputs.mode }}"
-          inline_images = "${{ github.event.inputs.inline_images }}" == "true"
-          inline_videos = "${{ github.event.inputs.inline_videos }}" == "true"
-          cloudflare_passer = "${{ github.event.inputs.cloudflare_passer }}" == "true"
-          user_agent = "${{ github.event.inputs.user_agent }}"
-          timeout = int("${{ github.event.inputs.timeout }}" or 30000) / 1000
-          branch_name = "${{ github.event.inputs.branch_name }}"
-          
+          url = sys.argv[1]
+          mode = sys.argv[2]
+          inline_images = sys.argv[3] == "true"
+          inline_videos = sys.argv[4] == "true"
+          cloudflare_passer = sys.argv[5] == "true"
+          user_agent = sys.argv[6]
+          timeout = float(sys.argv[7])
+          branch_name = sys.argv[8]
+          cookies_str = sys.argv[9] if len(sys.argv) > 9 else "{}"
+          headers_str = sys.argv[10] if len(sys.argv) > 10 else "{}"
+
+          import requests
+          session = requests.Session()
+
+          headers = {"User-Agent": user_agent if user_agent else "Mozilla/5.0"}
           try:
-              cookies = json.loads('${{ github.event.inputs.cookies }}')
+              h = json.loads(headers_str)
+              headers.update(h)
           except:
-              cookies = {}
-          
+              pass
+
           try:
-              custom_headers = json.loads('${{ github.event.inputs.custom_headers }}')
+              c = json.loads(cookies_str)
+              session.cookies.update(c)
           except:
-              custom_headers = {}
+              pass
 
-          # ── Default User-Agent ────────────────────────────────────
-          DEFAULT_UA = (
-              "Mozilla/5.0 (X11; Linux x86_64) "
-              "AppleWebKit/537.36 (KHTML, like Gecko) "
-              "Chrome/124.0.0.0 Safari/537.36"
-          )
+          print(f"Fetching: {url}")
+          resp = session.get(url, headers=headers, timeout=timeout)
+          resp.raise_for_status()
+          
+          raw = resp.text
+          final_url = resp.url
+          resp_cookies = dict(resp.cookies)
+          print(f"OK: {len(raw)} bytes")
 
-          headers = {"User-Agent": user_agent if user_agent else DEFAULT_UA}
-          headers.update(custom_headers)
-
-          print(f"🌐 Browsing: {url}")
-          print(f"📋 Mode: {mode}")
-          print(f"🖼️  Inline images: {inline_images}")
-          print(f"🎥 Inline videos: {inline_videos}")
-          print(f"🛡️  Cloudflare bypass: {cloudflare_passer}")
-          print(f"⏱️  Timeout: {timeout}s")
-          print(f"🍪 Cookies: {len(cookies)}")
-          print(f"📝 Custom headers: {len(custom_headers)}")
-
-          # ── Fetch page ────────────────────────────────────────────
-          try:
-              if cloudflare_passer and cloudscraper:
-                  session = cloudscraper.create_scraper(
-                      browser={"browser": "chrome", "platform": "linux", "mobile": False}
-                  )
-              else:
-                  import requests
-                  session = requests.Session()
-              
-              if cookies:
-                  session.cookies.update(cookies)
-              
-              response = session.get(url, headers=headers, timeout=timeout)
-              response.raise_for_status()
-              
-              raw_html = response.text
-              final_url = response.url
-              response_cookies = dict(response.cookies)
-              
-              print(f"✅ Fetched: {len(raw_html)} bytes")
-              print(f"🔗 Final URL: {final_url}")
-              print(f"🍪 Response cookies: {len(response_cookies)}")
-              
-          except Exception as e:
-              print(f"❌ Fetch failed: {e}")
-              sys.exit(1)
-
-          # ── Process content ───────────────────────────────────────
           if mode == "markdown" and md:
-              content = md(raw_html, heading_style="ATX", strip=["script", "style"])
-              print(f"📝 Converted to Markdown: {len(content)} chars")
-          
-          elif mode == "html":
-              content = raw_html
-              print(f"📄 Raw HTML: {len(content)} chars")
-          
-          elif mode == "full":
-              soup = BeautifulSoup(raw_html, "lxml")
-              
-              # Inline CSS
-              for link in soup.find_all("link", rel="stylesheet"):
-                  href = link.get("href", "")
-                  if href:
-                      abs_href = urllib.parse.urljoin(final_url, href)
+              content = md(raw, heading_style="ATX", strip=["script", "style"])
+          elif mode == "full" and BeautifulSoup:
+              soup = BeautifulSoup(raw, "lxml")
+              for img in soup.find_all("img"):
+                  src = img.get("src","")
+                  if inline_images and src and not src.startswith("data:"):
                       try:
-                          css_resp = session.get(abs_href, headers=headers, timeout=10)
-                          if css_resp.ok:
-                              style_tag = soup.new_tag("style")
-                              style_tag.string = css_resp.text
-                              link.replace_with(style_tag)
-                      except:
-                          pass
-              
-              # Inline images
-              if inline_images:
-                  for img in soup.find_all("img"):
-                      src = img.get("src", "")
-                      if src and not src.startswith("data:"):
-                          abs_src = urllib.parse.urljoin(final_url, src)
-                          try:
-                              img_resp = session.get(abs_src, headers=headers, timeout=10)
-                              if img_resp.ok:
-                                  ct = img_resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
-                                  b64 = base64.b64encode(img_resp.content).decode()
-                                  img["src"] = f"data:{ct};base64,{b64}"
-                          except:
-                              pass
-              
-              # Inline videos
-              if inline_videos:
-                  for source in soup.find_all("source"):
-                      src = source.get("src", "")
-                      if src and not src.startswith("data:"):
-                          abs_src = urllib.parse.urljoin(final_url, src)
-                          try:
-                              vid_resp = session.get(abs_src, headers=headers, timeout=15)
-                              if vid_resp.ok:
-                                  ct = vid_resp.headers.get("Content-Type", "video/mp4").split(";")[0]
-                                  b64 = base64.b64encode(vid_resp.content).decode()
-                                  source["src"] = f"data:{ct};base64,{b64}"
-                          except:
-                              pass
-              
+                          r = session.get(urllib.parse.urljoin(final_url, src), timeout=10)
+                          if r.ok:
+                              ct = r.headers.get("Content-Type","image/jpeg").split(";")[0]
+                              img["src"] = f"data:{ct};base64,{base64.b64encode(r.content).decode()}"
+                      except: pass
               content = str(soup)
-              print(f"🌐 Full page processed: {len(content)} chars")
-          
           else:
-              content = raw_html
+              content = raw
 
-          # ── Save output ───────────────────────────────────────────
           os.makedirs("output", exist_ok=True)
-          
-          # Save content
-          ext_map = {"markdown": "md", "html": "html", "full": "html"}
-          ext = ext_map.get(mode, "html")
-          content_path = f"output/content.{ext}"
-          
-          with open(content_path, "w", encoding="utf-8") as f:
+          ext = "md" if mode == "markdown" else "html"
+          with open(f"output/content.{ext}", "w", encoding="utf-8") as f:
               f.write(content)
-          
-          # Save metadata
-          metadata = {
-              "url": final_url,
-              "mode": mode,
-              "size": str(len(content)),
-              "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-              "status_code": str(response.status_code),
-              "content_type": response.headers.get("Content-Type", "unknown"),
-          }
-          
-          with open("output/metadata.json", "w") as f:
-              json.dump(metadata, f, indent=2)
-          
-          # Save cookies
-          with open("output/cookies.json", "w") as f:
-              json.dump(response_cookies, f, indent=2)
-          
-          print(f"\n✅ Output saved:")
-          print(f"   📄 Content: {content_path} ({len(content)} chars)")
-          print(f"   📋 Metadata: output/metadata.json")
-          print(f"   🍪 Cookies: output/cookies.json")
+          json.dump({"url": final_url, "mode": mode, "size": len(content)}, open("output/metadata.json","w"))
+          json.dump(resp_cookies, open("output/cookies.json","w"))
+          print(f"Saved: output/content.{ext}")
           PYEOF
+
+          python3 browse.py \
+            "${{ github.event.inputs.url }}" \
+            "${{ github.event.inputs.mode }}" \
+            "${{ github.event.inputs.inline_images }}" \
+            "${{ github.event.inputs.inline_videos }}" \
+            "${{ github.event.inputs.cloudflare_passer }}" \
+            "${{ github.event.inputs.user_agent }}" \
+            "${{ github.event.inputs.timeout }}" \
+            "${{ github.event.inputs.branch_name }}" \
+            '${{ github.event.inputs.cookies }}' \
+            '${{ github.event.inputs.custom_headers }}'
 
       - name: Commit and push result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Create and switch to temp branch
           git checkout -b ${{ github.event.inputs.branch_name }}
-          
-          # Add output files
           git add output/
-          
-          # Commit
-          git commit -m "Browse: ${{ github.event.inputs.url }}" || echo "No changes to commit"
-          
-          # Push
+          git commit -m "Browse: ${{ github.event.inputs.url }}" || echo "No changes"
           git push origin ${{ github.event.inputs.branch_name }}
-          
-          echo "✅ Branch created: ${{ github.event.inputs.branch_name }}"
+          echo "✅ Branch: ${{ github.event.inputs.branch_name }}"
