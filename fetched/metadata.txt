@@ -1,0 +1,9 @@
+URL: https://www.curseforge.com/minecraft/mc-mods/ice-and-fire-dragons
+Final URL: 200
+HTTP Status:                                  Dload  Upload   Total   Spent    Left  Speed
+Content-Type:   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 58566    0 58566    0     0   692k      0 --:--:-- --:--:-- --:--:--  697k
+Size:  bytes ( MB)
+Download Time: text/html; charset=utf-8s
+Speed: .05 MB/s (57.19 KB/s)
+Filename: 200.bin
+Timestamp: 2026-05-10 16:33:39 UTC
