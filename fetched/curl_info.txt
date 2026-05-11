@@ -1,0 +1,10 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 32542    0 32542    0     0   415k      0 --:--:-- --:--:-- --:--:--  418k
+
+200
+text/html; charset=utf-8
+32542
+https://www.curseforge.com/minecraft/mc-mods/terraria-craft/download/5268859
+0.076452
+425652

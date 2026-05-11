@@ -1,0 +1,9 @@
+URL: https://www.curseforge.com/minecraft/mc-mods/terraria-craft/download/5268859
+Final URL: 200
+HTTP Status:                                  Dload  Upload   Total   Spent    Left  Speed
+Content-Type:   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 32542    0 32542    0     0   415k      0 --:--:-- --:--:-- --:--:--  418k
+Size:  bytes ( MB)
+Download Time: text/html; charset=utf-8s
+Speed: .03 MB/s (31.77 KB/s)
+Filename: m.html
+Timestamp: 2026-05-11 18:14:28 UTC
